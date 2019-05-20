@@ -12,10 +12,22 @@ from tensorpack.models import (
 from tensorpack import layer_register
 
 
+@auto_reuse_variable_scope
+def get_bn_momentum():
+    mom = tf.get_variable('bn_momentum',
+                          (),
+                          dtype=tf.float32,
+                          trainable=False,
+                          initializer=tf.constant_initializer(0.9))
+    tf.summary.scalar('bn_momentum-summary', mom)
+    return mom
+
+
 @contextmanager
 def ssdnet_argscope():
     with argscope([Conv2D, MaxPooling, BatchNorm, DWConv], data_format='NHWC'), \
-            argscope([Conv2D, FullyConnected], use_bias=False):
+            argscope([Conv2D, FullyConnected], use_bias=False), \
+            argscope([BatchNorm], momentum=get_bn_momentum()):
         yield
 
 

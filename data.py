@@ -111,8 +111,19 @@ def get_train_dataflow():
     return ds
 
 
-def get_eval_dataflow(batch_size=0):
+def get_eval_dataflow(batch_size=0, shard=0, num_shards=1):
+    '''
+    '''
     imgs = load_many_from_db(cfg.DATA.NAME, add_gt=True, is_train=False)
+
+    if num_shards > 1:
+        num_imgs = len(imgs)
+        img_per_shard = num_imgs // num_shards
+        s, e = shard * img_per_shard, min(num_imgs, (shard + 1) * img_per_shard)
+        imgs = imgs[s:e]
+
+    assert len(imgs) % batch_size == 0, \
+            'len(img) must be multiples of batch_size, {}, {}'.format(len(imgs), batch_size)
     # imgs = COCODetection.load_many(cfg.DATA.BASEDIR, cfg.DATA.VAL, add_gt=False)
     # no filter for training
     # ds = DataFromList(imgs, shuffle=False)
@@ -120,6 +131,7 @@ def get_eval_dataflow(batch_size=0):
 
     if batch_size <= 0:
         batch_size = cfg.PREPROC.EVAL_BATCH_SIZE
+    assert batch_size > 0, 'Batch size should be greater than 0'
 
     def f(fname):
         im = cv2.imread(fname, cv2.IMREAD_COLOR)

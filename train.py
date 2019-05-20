@@ -34,7 +34,9 @@ from data import get_train_dataflow, get_eval_dataflow
 from viz import draw_predictions
 #     draw_annotation, draw_proposal_recall,
 #     draw_predictions, draw_final_outputs, draw_final_outputs_cv)
-from eval import detect_one_image, detect_batch, eval_dataset, print_evaluation_scores
+from eval import ( \
+        detect_one_image, detect_batch, pred_dataflow, \
+        multithread_pred_dataflow, print_evaluation_scores)
 #     eval_dataset, detect_one_image, detect_batch,
 #     print_evaluation_scores, create_detection_result)
 from config import finalize_configs, config as cfg
@@ -46,7 +48,7 @@ from model.ssdnet_model import SSDNetModel as TrainModel
 
 def offline_evaluate(pred_func, output_file):
     df = get_eval_dataflow()
-    all_results = eval_dataset(df, lambda img: detect_batch(img, pred_func))
+    all_results = pred_dataset(df, lambda img: detect_batch(img, pred_func))
     # all_results = eval_dataset(
     #     df, lambda img: detect_one_image(img, pred_func))
     logger.info('Dumping evaluation results')
@@ -183,8 +185,6 @@ if __name__ == '__main__':
         pass
 
     if args.flops:
-        # cfg.USE_CUSTOM_PSROI = False
-        # cfg.FOR_FLOPS = True
         finalize_configs(is_training=False)
 
         MODEL = TrainModel(1, cfg.PREPROC.INPUT_SHAPE_EVAL)
@@ -257,7 +257,7 @@ if __name__ == '__main__':
                 predict_video(pred, args.predict)
             else:
                 predict(pred, args.predict)
-    else:
+    else: # training mode
         is_horovod = cfg.TRAINER == 'horovod'
         if is_horovod:
             hvd.init()
@@ -281,9 +281,16 @@ if __name__ == '__main__':
         # lr function
         def _compute_lr(e, x, max_lr, min_lr, cepoch):
             # we won't use x, but this is the function template anyway
-            lr = 0.5 * (1. + np.cos((e % cepoch) / float(cepoch - 1) * np.pi))
-            lr = min_lr + (max_lr - min_lr) * lr
+            w = 0.5 * (1. + np.cos((e % cepoch) / float(cepoch - 1) * np.pi)) # from 1 to 0
+            lr = min_lr + (max_lr - min_lr) * w # from max to min
             return lr
+
+        # lr function
+        def _compute_mom(e, x, min_m, max_m, cepoch):
+            # we won't use x, but this is the function template anyway
+            w = 0.5 * (1. + np.cos((e % cepoch) / float(cepoch - 1) * np.pi)) # from 1 to 0
+            mom = max_m - (max_m - min_m) * w # from min to max
+            return mom
 
         callbacks = [
             PeriodicCallback(
@@ -291,6 +298,8 @@ if __name__ == '__main__':
                 every_k_epochs=cfg.TRAIN.SAVE_EPOCH_STEP),
             HyperParamSetterWithFunc(
                 'learning_rate', partial(_compute_lr, max_lr=max_lr, min_lr=min_lr, cepoch=cyclic_epoch)),
+            HyperParamSetterWithFunc(
+                'bn_momentum', partial(_compute_mom, min_m=0.9, max_m=0.9995, cepoch=cyclic_epoch)),
             # EvalCallback(*MODEL.get_inference_tensor_names()),
             # PeakMemoryTracker(),
             EstimatedTimeLeft(),

@@ -1,6 +1,6 @@
 #/bin/bash
 export CUDA_VISIBLE_DEVICES=''
-./train.py \
+./predict.py \
     --predict '~/github/ICNet-tensorflow/data/input/cityscapes1.png' \
     --load './train_log/cityscapes_ssdnet/checkpoint' \
     --config \

@@ -16,7 +16,7 @@ from config import config as cfg
 from utils.iou import IoU
 
 
-def detect_one_image(img, model_func):
+def pred_image(img, model_func):
     """
     Run detection on one image, using the TF callable.
     This function should handle the preprocessing internally.
@@ -35,10 +35,10 @@ def detect_one_image(img, model_func):
     resized_img = np.expand_dims(resized_img, 0) # (1, h, w, 3)
 
     preds = model_func(resized_img)
-    return preds[0][0]
+    return preds[0][0] # (H, W)
 
 
-def detect_batch(img_batch, model_func):
+def pred_batch(img_batch, model_func):
     '''
     Run detection for a batch of images.
     This img_batch should be given from a eval_dataflow.
@@ -53,34 +53,55 @@ def detect_batch(img_batch, model_func):
     return preds[0] # (N, H, W)
 
 
-def eval_dataset(df, detect_func):
+def pred_dataflow(df, model_func, tqdm_bar=None):
     '''
     '''
     if cfg.DATA.NAME == 'cityscapes':
-        return eval_cityscapes(df, detect_func)
+        return pred_cityscapes(df, model_func, tqdm_bar)
     # elif cfg.DATA.NAME in ('pvtdb', 'dss', 'voc'):
     #     return eval_dss(df, detect_func)
     else:
         raise ValueError
 
 
-def eval_cityscapes(df, detect_func):
+def pred_cityscapes(df, model_func, tqdm_bar=None):
     """
     Args:
         df: a DataFlow which produces (image, image_id)
-        detect_func: a callable, takes [image] and returns [DetectionResult]
+        model_func: a callable, takes [image] and returns [prediction]
 
     Returns:
         list of dict, to be dumped to COCO json format
     """
     df.reset_state()
     all_results = {}
-    with tqdm.tqdm(total=df.size(), **get_tqdm_kwargs()) as pbar:
-        for img_batch, img_id_batch in df.get_data():
-            preds_batch = detect_func(img_batch)
+    with ExitStack() as stack():
+        if tqdm_bar is None:
+            tqdm_bar = stack.enter_context(get_tqdm(total=df.size()))
+        # with tqdm.tqdm(total=df.size(), **get_tqdm_kwargs()) as pbar:
+        for img_batch, img_id_batch in df: #.get_data():
+            preds_batch = pred_batch(img_batch, model_func)
             for preds, img_id in zip(preds_batch, img_id_batch):
                 all_results[img_id] = preds.astype(np.uint8)
-            pbar.update(1)
+            tqdm_bar.update(1) # pbar.update(1)
+    return all_results
+
+
+def multithread_pred_dataflow(dataflows, model_funcs):
+    '''
+    '''
+    num_worker = len(model_funcs)
+    assert len(dataflows) == num_worker
+    if num_worker == 1:
+        return pred_dataflow(dataflows[0], model_funcs[0])
+    kwargs = {'thread_name_prefix': 'EvalWorker'} if sys.version_info.minor >= 6 else {}
+    with ThreadPoolExecutor(max_workers=num_worker, **kwargs) as executor, \
+            tqdm.tqdm(total=sum([df.size() for df in dataflows])) as pbar:
+        futures = []
+        for dataflow, pred in zip(dataflows, model_funcs):
+            futures.append(executor.submit(pred_dataflow, dataflow, pred, pbar))
+        all_results_list = list(itertools.chain(*[fut.result() for fut in futures])) # will be list of dict
+    all_results = { k: v for res_dict in all_results_list for k, v in res_dict.items() }
     return all_results
 
 

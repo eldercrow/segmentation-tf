@@ -35,9 +35,10 @@ def aspp_features(hlist, num_classes=19, alpha=1.0):
             s = tf.image.resize_bilinear(s, shape_h1[1:3], align_corners=True)
         feat = tf.multiply(feat, s)
 
-    feat = tf.image.resize_bilinear(feat, shape_h0[1:3], align_corners=True)
-    feat = DWConv('convd', feat, 5)
-    feat_l = Conv2D('conv_h0', h0, 128, 1, activation=BNReLU)
+        feat = tf.image.resize_bilinear(feat, shape_h0[1:3], align_corners=True)
+        feat = DWConv('convd', feat, 5)
+        feat_l = Conv2D('conv_h0', h0, 128, 1, activation=BNReLU)
+
     with argscope([Conv2D], use_bias=True):
         feat = Conv2D('logit_up', feat, num_classes, 1)
         feat_l = Conv2D('logit_h0', feat_l, num_classes, 1)
