@@ -18,23 +18,25 @@ from tensorpack.tfutils import get_model_loader, get_tf_version_tuple
 from tensorpack.tfutils.tower import PredictTowerContext
 from tensorpack.utils import fs, logger
 
-from dataset import DatasetRegistry, register_coco
-from config import config as cfg
+from model.ssdnet_model import SSDNetModel as PredModel
+# from dataset import DatasetRegistry, register_coco
+# from config import config as cfg
 from config import finalize_configs, config as cfg
 from data import get_eval_dataflow
 from eval import ( \
         pred_image, pred_dataflow, \
         multithread_pred_dataflow, print_evaluation_scores)
+from viz import draw_predictions
 
 
-def do_evaluate(pred_config, output_file):
+def do_evaluate(pred_config, output_file, batch_size):
     '''
     Multi-gpu evaluation, if available
     '''
     num_tower = max(cfg.TRAIN.NUM_GPUS, 1)
     graph_funcs = MultiTowerOfflinePredictor(
         pred_config, list(range(num_tower))).get_predictors()
-    dataflows = [get_eval_dataflow(shard=k, num_shards=num_tower) for k in range(num_tower)]
+    dataflows = [get_eval_dataflow(batch_size, shard=k, num_shards=num_tower) for k in range(num_tower)]
     all_results = multithread_pred_dataflow(dataflows, graph_funcs)
     # df = get_eval_dataflow()
     # all_results = pred_dataflow(df, lambda img: detect_batch(img, pred_func))
@@ -76,7 +78,7 @@ if __name__ == '__main__':
     if args.flops:
         finalize_configs(is_training=False)
 
-        MODEL = TrainModel(1, cfg.PREPROC.INPUT_SHAPE_EVAL)
+        MODEL = PredModel(1, cfg.PREPROC.INPUT_SHAPE_EVAL)
 
         in_shape = [1, cfg.PREPROC.INPUT_SHAPE_EVAL[0], cfg.PREPROC.INPUT_SHAPE_EVAL[1], 3]
         pred_config = PredictConfig(model=MODEL,
@@ -104,7 +106,7 @@ if __name__ == '__main__':
         batch_size = cfg.PREPROC.EVAL_BATCH_SIZE
     if args.predict:
         batch_size = 1
-    MODEL = TrainModel(batch_size, input_shape)
+    MODEL = PredModel(batch_size, input_shape)
 
     pred_config = PredictConfig( \
             model=MODEL, \
@@ -116,7 +118,7 @@ if __name__ == '__main__':
         if args.evalfromjson:
             ret = print_evaluation_scores(args.evaluate)
         else:
-            ret = do_evaluate(pred_config, args.evaluate)
+            ret = do_evaluate(pred_config, args.evaluate, batch_size)
         print('mIoU = {:.3f}'.format(ret['miou']))
     else:
         pred = OfflinePredictor(pred_config)
@@ -125,7 +127,7 @@ if __name__ == '__main__':
             export_path, export_name = os.path.split(args.export_graph)
             graph_io.write_graph(pred.sess.graph, export_path, export_name+'txt', as_text=True)
             graph_io.write_graph(pred.sess.graph, export_path, export_name, as_text=False)
-        else args.predict:
+        elif args.predict:
             do_predict(pred, args.predict)
         # if args.pred_video:
         #     predict_video(pred, args.predict)

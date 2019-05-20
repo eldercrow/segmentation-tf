@@ -2,13 +2,16 @@
 # File: eval.py
 
 import tqdm
-import os
+import sys, os
 from collections import namedtuple, defaultdict
 import numpy as np
 import cv2
 import json
+import itertools
 
-from tensorpack.utils.utils import get_tqdm_kwargs
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
+from tensorpack.utils.utils import get_tqdm_kwargs, get_tqdm
 
 from dataset.dataset_utils import load_many_from_db #, load_class_names
 from common import SSDResize
@@ -75,7 +78,7 @@ def pred_cityscapes(df, model_func, tqdm_bar=None):
     """
     df.reset_state()
     all_results = {}
-    with ExitStack() as stack():
+    with ExitStack() as stack:
         if tqdm_bar is None:
             tqdm_bar = stack.enter_context(get_tqdm(total=df.size()))
         # with tqdm.tqdm(total=df.size(), **get_tqdm_kwargs()) as pbar:
@@ -100,7 +103,8 @@ def multithread_pred_dataflow(dataflows, model_funcs):
         futures = []
         for dataflow, pred in zip(dataflows, model_funcs):
             futures.append(executor.submit(pred_dataflow, dataflow, pred, pbar))
-        all_results_list = list(itertools.chain(*[fut.result() for fut in futures])) # will be list of dict
+        all_results_list = [fut.result() for fut in futures] # will be list of dict
+        # all_results_list = list(itertools.chain(*[fut.result() for fut in futures])) # will be list of dict
     all_results = { k: v for res_dict in all_results_list for k, v in res_dict.items() }
     return all_results
 

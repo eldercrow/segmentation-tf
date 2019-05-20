@@ -51,7 +51,7 @@ def offline_evaluate(pred_func, output_file):
     all_results = pred_dataset(df, lambda img: detect_batch(img, pred_func))
     # all_results = eval_dataset(
     #     df, lambda img: detect_one_image(img, pred_func))
-    logger.info('Dumping evaluation results')
+    # logger.info('Dumping evaluation results')
     np.savez(output_file, **all_results)
     # with tqdm.tqdm(total=len(all_results), **get_tqdm_kwargs()) as pbar:
     #     for ii, res in enumerate(all_results):
