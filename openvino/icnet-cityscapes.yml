@@ -1,0 +1,45 @@
+models:
+  - name: icnet-cityscapes
+
+    launchers:
+      - framework: dlsdk
+        tags:
+          - FP32
+        device: CPU
+        model: icnet_IR.xml
+        weights: icnet_IR.bin
+        adapter: segmentation
+        cpu_extensions: /home/hyunjoon/inference_engine_samples_build/intel64/Release/lib/libcpu_extension.so
+
+      - framework: dlsdk
+        tags:
+          - INT8
+        device: CPU
+        model: icnet_IR_i8.xml
+        weights: icnet_IR_i8.bin
+        adapter: segmentation
+        cpu_extensions: /home/hyunjoon/inference_engine_samples_build/intel64/Release/lib/libcpu_extension.so
+
+    datasets:
+      - name: cityscapes
+        data_source: /home/hyunjoon/dataset/cityscapes
+        subsample_size: 500
+        annotation_conversion:
+          converter: cityscapes
+          dataset_root_dir: /home/hyunjoon/dataset/cityscapes
+          images_subfolder: leftImg8bit/val
+
+        preprocessing:
+          - type: resize
+            dst_width: 2048
+            dst_height: 1024
+
+        postprocessing:
+          - type: resize_segmentation_mask
+            dst_width: 2048
+            dst_height: 1024
+            apply_to: annotation
+
+        metrics:
+          - type: mean_iou
+            use_argmax: false
