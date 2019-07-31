@@ -43,8 +43,8 @@ def aspp_losses(cls_logits, labels, num_classes):
     valid_logits = tf.gather(logits, idx)
     valid_labels = tf.gather(labels, idx)
 
-    cls_loss = focal_loss(labels=valid_labels, logits=valid_logits)
-    # cls_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=valid_labels, logits=valid_logits)
+    # cls_loss = focal_loss(labels=valid_labels, logits=valid_logits)
+    cls_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=valid_labels, logits=valid_logits)
     cls_loss = tf.reduce_mean(cls_loss, name='cls_loss')
 
     correct = tf.equal(valid_labels, tf.argmax(valid_logits, axis=-1, output_type=valid_labels.dtype))

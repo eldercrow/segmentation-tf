@@ -27,7 +27,7 @@ def get_bn_momentum():
 def ssdnet_argscope():
     with argscope([Conv2D, MaxPooling, BatchNorm, DWConv], data_format='NHWC'), \
             argscope([Conv2D, FullyConnected], use_bias=False), \
-            argscope([BatchNorm], momentum=get_bn_momentum()):
+            argscope([BatchNorm], momentum=get_bn_momentum(), training=None):
         yield
 
 
@@ -131,29 +131,33 @@ def inception(x, ch, stride, t=3, swap_block=False, w_init=None, active=None):
 
 def ssdnet_backbone(image, **kwargs):
     #
-    with ssdnet_argscope():
+    with ssdnet_argscope() as scope:
         l = image #tf.transpose(image, perm=[0, 2, 3, 1])
-        # conv1
-        l = Conv2D('conv1', l, 32, 4, strides=2, activation=None, padding='SAME')
-        with tf.variable_scope('conv1'):
-            l = BNReLU(tf.concat([l, -l], axis=-1))
-        l = MaxPooling('pool1', l, 2)
-        # conv2
-        l = LinearBottleneck('conv2', l, 64, 32, 5, t=1)
+        with argscope([BatchNorm], training=False):
+            # conv1
+            l = Conv2D('conv1', l, 32, 4, strides=2, activation=None, padding='SAME')
+            with tf.variable_scope('conv1'):
+                l = BNReLU(tf.concat([l, -l], axis=-1))
+            l = MaxPooling('pool1', l, 2)
+            l = tf.stop_gradient(l)
         # l = l + LinearBottleneck('conv3', l, 32, 32, 3, t=2)
 
-        ch_all = [64, 96, 128]
-        iters = [2, 4, 4]
-        mults = [3, 4, 6]
+        with argscope([BatchNorm], training=None):
+            # conv2
+            l = LinearBottleneck('conv2', l, 64, 32, 5, t=1)
 
-        hlist = []
-        for ii, (ch, it, mu) in enumerate(zip(ch_all, iters, mults)):
-            for jj in range(it):
-                name = 'inc{}/{}'.format(ii, jj)
-                stride = 2 if jj == 0 else 1
-                swap_block = True if jj % 2 == 1 else False
-                l = inception(name, l, ch, stride, t=mu, swap_block=swap_block)
-            hlist.append(l)
+            ch_all = [64, 96, 128]
+            iters = [2, 4, 4]
+            mults = [3, 4, 6]
+
+            hlist = []
+            for ii, (ch, it, mu) in enumerate(zip(ch_all, iters, mults)):
+                for jj in range(it):
+                    name = 'inc{}/{}'.format(ii, jj)
+                    stride = 2 if jj == 0 else 1
+                    swap_block = True if jj % 2 == 1 else False
+                    l = inception(name, l, ch, stride, t=mu, swap_block=swap_block)
+                hlist.append(l)
 
     return hlist
     #     # hyperfeatures

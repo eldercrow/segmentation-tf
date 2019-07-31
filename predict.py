@@ -3,7 +3,7 @@
 import argparse
 import itertools
 import numpy as np
-import os
+import os, sys
 import shutil
 import tensorflow as tf
 import cv2
@@ -14,11 +14,13 @@ assert six.PY3, "This example requires Python 3!"
 
 import tensorpack.utils.viz as tpviz
 from tensorpack.predict import MultiTowerOfflinePredictor, OfflinePredictor, PredictConfig
-from tensorpack.tfutils import get_model_loader, get_tf_version_tuple
+from tensorpack.tfutils import get_model_loader, get_tf_version_tuple, model_utils
 from tensorpack.tfutils.tower import PredictTowerContext
 from tensorpack.utils import fs, logger
+# from tensorpack.graph_builder import InputDesc
+from tensorpack import PlaceholderInput, InputDesc
 
-from model.ssdnet_model import SSDNetModel as PredModel
+from model.icnet_model import ICNetModel as PredModel
 # from dataset import DatasetRegistry, register_coco
 # from config import config as cfg
 from config import finalize_configs, config as cfg
@@ -56,7 +58,7 @@ def do_predict(pred_func, input_file):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--load', help='trained model to load.', required=True)
+    parser.add_argument('--load', help='trained model to load.', default='')
     parser.add_argument('--logdir', help='log directory', default='eval_log/aspp')
     parser.add_argument('--predict', help="Run prediction on a given image. "
                                           "This argument is the path to the input image file")
@@ -95,6 +97,8 @@ if __name__ == '__main__':
                 cmd='op',
                 options=tf.profiler.ProfileOptionBuilder.float_operation())
         sys.exit(0)
+
+    assert args.load
 
     # is_training = False
     finalize_configs(is_training=False)

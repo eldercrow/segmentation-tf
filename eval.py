@@ -9,12 +9,13 @@ import cv2
 import json
 import itertools
 
+from scipy.io import loadmat
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from tensorpack.utils.utils import get_tqdm_kwargs, get_tqdm
 
 from dataset.dataset_utils import load_many_from_db #, load_class_names
-from common import SSDResize
+from common import SSDResize, CropPadTransform
 from config import config as cfg
 from utils.iou import IoU
 
@@ -52,14 +53,15 @@ def pred_batch(img_batch, model_func):
     # boxes: (N, na, 4)
     # probs: (N, na)
     # labels: (N, na)
-    preds = model_func(np.stack(img_batch, axis=0))
+    # preds = model_func(np.stack(img_batch, axis=0))
+    preds = model_func(img_batch)
     return preds[0] # (N, H, W)
 
 
 def pred_dataflow(df, model_func, tqdm_bar=None):
     '''
     '''
-    if cfg.DATA.NAME == 'cityscapes':
+    if cfg.DATA.NAME in ('cityscapes', 'cocostuff'):
         return pred_cityscapes(df, model_func, tqdm_bar)
     # elif cfg.DATA.NAME in ('pvtdb', 'dss', 'voc'):
     #     return eval_dss(df, detect_func)
@@ -113,29 +115,43 @@ def multithread_pred_dataflow(dataflows, model_funcs):
 def print_evaluation_scores(fn_all_results):
     '''
     '''
-    if cfg.DATA.NAME in ('cityscapes'):
-        return print_cityscapes_evaluation_scores(fn_all_results)
+    if cfg.DATA.NAME in ('cityscapes',):
+        return print_cityscapes_evaluation_scores(fn_all_results, 19)
+    elif cfg.DATA.NAME in ('cocostuff',):
+        return print_cityscapes_evaluation_scores(fn_all_results, 182)
     else:
         raise ValueError
 
 
-def print_cityscapes_evaluation_scores(fn_all_results):
+def print_cityscapes_evaluation_scores(fn_all_results, num_classes):
     # ret = odict()
     # assert cfg.DATA.DSS.BASEDIR and os.path.isdir(cfg.DATA.DSS.BASEDIR)
     db_name = cfg.DATA.NAME
+
+    if db_name == 'cocostuff':
+        hh, ww = cfg.PREPROC.INPUT_SHAPE_EVAL
+        aug = CropPadTransform(0, 0, ww, hh, 255)
 
     # load the default testset defined in config
     db = load_many_from_db(db_name, add_gt=True, is_train=False)
     # db = DSSDetection.load_many(names='test')
     #
     db_all = { d['id']: d for d in db }
-    mIoU = IoU(num_classes=19)
+    mIoU = IoU(num_classes=num_classes)
 
     all_results = np.load(fn_all_results)
 
     for img_id, preds in all_results.items():
         fn_label = db_all[img_id]['fn_label']
-        labels = cv2.imread(os.path.expanduser(fn_label), cv2.IMREAD_GRAYSCALE)
+        if fn_label.endswith('.mat'):
+            labels = loadmat(fn_label)['S'].astype(int)
+            labels = (labels - 1).astype(np.uint8)
+            # labels = cv2.resize(labels, (ww, hh), interpolation=cv2.INTER_NEAREST)
+            scale = min(ww / float(labels.shape[1]), hh / float(labels.shape[0]))
+            labels = cv2.resize(labels, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+            labels = aug.apply_image(labels)
+        else:
+            labels = cv2.imread(os.path.expanduser(fn_label), cv2.IMREAD_GRAYSCALE)
 
         if preds.shape != labels.shape:
             hh, ww = labels.shape
@@ -148,6 +164,6 @@ def print_cityscapes_evaluation_scores(fn_all_results):
         # add an entry
         mIoU.add(preds, labels)
 
-    _, miou = mIoU.value()
+    ious_all, miou = mIoU.value()
     ret = {'miou': miou}
     return ret

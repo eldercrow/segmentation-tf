@@ -11,7 +11,8 @@ from tensorpack.tfutils.summary import add_moving_summary
 
 from tensorpack.tfutils import optimizer
 from backbone.basemodel import image_preprocess
-from backbone.ssdnetv2 import ssdnet_backbone, ssdnet_argscope
+from backbone.ssdnet import ssdnet_backbone, ssdnet_argscope
+# from backbone.ssdnetv2 import ssdnet_backbone, ssdnet_argscope
 from aspp.losses import aspp_losses
 from aspp.ssdnet_aspp import aspp_features
 from aspp.inference import aspp_inference

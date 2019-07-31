@@ -6,7 +6,8 @@ from tensorpack.models import (
     Conv2D, MaxPooling, AvgPooling, BatchNorm, BNReLU)
 # from tensorpack import layer_register
 
-from backbone.ssdnetv2 import ssdnet_argscope, LinearBottleneck, DWConv
+from backbone.ssdnet import ssdnet_argscope, LinearBottleneck, DWConv
+# from backbone.ssdnetv2 import ssdnet_argscope, LinearBottleneck, DWConv
 from utils.shape_utils import combined_static_and_dynamic_shape
 
 

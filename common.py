@@ -8,7 +8,7 @@ from tensorpack.dataflow import RNGDataFlow
 from tensorpack.dataflow.imgaug import transform
 from tensorpack.dataflow.imgaug.base import ImageAugmentor
 
-import pycocotools.mask as cocomask
+# import pycocotools.mask as cocomask
 
 
 class DataFromListOfDict(RNGDataFlow):
@@ -74,7 +74,7 @@ class SSDCropRandomShape(transform.TransformAugmentorBase):
 
     def __init__(self,
                  base_hw=(720, 720),
-                 scale_exp=2.0,
+                 scale_exp=2.5,
                  aspect_exp=1.1,
                  mean_rgbgr=np.array([127, 127, 127])):
         """
@@ -91,17 +91,22 @@ class SSDCropRandomShape(transform.TransformAugmentorBase):
 
     def _get_augment_params(self, img):
         h, w = img.shape[:2]
-        area = h * w
+        # area = h * w
         scale_e, asp_e = self.rng.uniform(-1.0, 1.0, size=[2])
         # random scale and aspect ratio
         scale = np.power(self.scale_exp, scale_e)
-        asp = np.sqrt(np.power(self.aspect_exp, asp_e))
+        asp = np.power(self.aspect_exp, asp_e)
+        asp = np.sqrt(asp)
         # define crop box size
-        ww = int(self.base_hw[1] * scale * asp + 0.5)
-        hh = int(self.base_hw[0] * scale / asp + 0.5)
+        ww = int(np.round(self.base_hw[1] * scale * asp))
+        hh = int(np.round(self.base_hw[0] * scale / asp))
         # and crop box itself
-        x0 = 0 if w == ww else self.rng.randint(min(w - ww, 0), max(w - ww, 0))
-        y0 = 0 if h == hh else self.rng.randint(min(h - hh, 0), max(h - hh, 0))
+        thx = int(min(w, ww) * 0.15)
+        thy = int(min(h, hh) * 0.15)
+        x0 = self.rng.randint(min(w - ww, -thx), max(w - ww, thx))
+        y0 = self.rng.randint(min(h - hh, -thy), max(h - hh, thy))
+        # x0 = 0 if w == ww else self.rng.randint(min(w - ww, 0), max(w - ww, 0))
+        # y0 = 0 if h == hh else self.rng.randint(min(h - hh, 0), max(h - hh, 0))
         x1 = x0 + ww
         y1 = y0 + hh
         return CropPadTransform(x0, y0, x1, y1, self.mean_rgbgr)
@@ -125,147 +130,156 @@ class SSDColorJitter(ImageAugmentor):
                  mean_rgbgr=[127.0, 127.0, 127.0], \
                  rand_l=0.1 * 255, \
                  rand_c=0.2, \
-                 rand_h=0.1 * 255):
+                 rand_h=0.0333 * 255):
         super(SSDColorJitter, self).__init__()
         min_rgbgr = -mean_rgbgr
         max_rgbgr = min_rgbgr + 255.0
+        drop_indices = [(0, 1), (0, 2), (1, 2)]
         self._init(locals())
 
     def _get_augment_params(self, _):
-        return self.rng.uniform(-1.0, 1.0, [8])
+        return self.rng.uniform(-1.0, 1.0, [9])
 
     def _augment(self, img, rval):
-        rflag = (rval[5:] > 0.3333).astype(float)
-        rval[0] *= (self.rand_l * rflag[0])
-        rval[1] = np.power(1.0 + self.rand_c, rval[3] * rflag[1])
-        rval[2:4] *= (self.rand_h * rflag[2])
-        rval[4] = -(rval[2] + rval[3])
+        # (lval, cval, rval, gval, dval, lflag, cflag, hflag, dflag)
+        rflag = rval[5:] * 0.5 + 0.5
+        # color augmentation
+        lighting = rval[0] * self.rand_l * float(rflag[0] > 0.25)
+        contrast = np.power(1.0 + self.rand_c, rval[3] * float(rflag[1] > 0.25))
+        hue = self.rand_h * float(rflag[2] > 0.25)
+        red = rval[2] * hue
+        green = rval[3] * hue
+        blue = -(red + green)
+        hue = [red, green, blue]
 
         for i in range(3):
-            add_val = (rval[0] + rval[i+2] - self.mean_rgbgr[i]) * rval[1] + self.mean_rgbgr[i]
-            img[:, :, i] = img[:, :, i] * rval[1] + add_val
-            # img[:, :, i] = np.maximum(0.0, np.minimum(255.0,
-            #     (img[:, :, i] + add_val) * rval[1] + self.mean_rgbgr[i]))
+            img[:, :, i] = (img[:, :, i] - self.mean_rgbgr[i]) * contrast + \
+                           lighting + hue[i] + self.mean_rgbgr[i]
+
+        # if rflag[3] > 0.5:
+        #     didx = self.drop_indices[min(int((rval[4] * 0.5 + 0.5) * 3), 2)] # {0, 1, 2}
+        #     for d in didx:
+        #         img[:, :, d] = self.mean_rgbgr[d]
         return np.maximum(0.0, np.minimum(255.0, img))
 
 
-class CustomResize(transform.TransformAugmentorBase):
-    """
-    Try resizing the shortest edge to a certain number
-    while avoiding the longest edge to exceed max_size.
-    """
-
-    def __init__(self, size, max_size, stride=32, interp=cv2.INTER_LINEAR):
-        """
-        Args:
-            size (int): the size to resize the shortest edge to.
-            max_size (int): maximum allowed longest edge.
-        """
-        if not isinstance(size, (list, tuple)):
-            size = [size]
-        self._init(locals())
-
-    def _get_augment_params(self, img):
-        h, w = img.shape[:2]
-        if len(self.size) > 1:
-            sidx = np.random.randint(0, len(self.size))
-        else:
-            sidx = 0
-        size = self.size[sidx]
-
-        scale = size * 1.0 / min(h, w)
-        if h < w:
-            newh, neww = size, scale * w
-        else:
-            newh, neww = scale * h, size
-        if max(newh, neww) > self.max_size:
-            scale = self.max_size * 1.0 / max(newh, neww)
-            newh = newh * scale
-            neww = neww * scale
-        neww = int(neww + 0.5)
-        newh = int(newh + 0.5)
-        if self.stride > 1:
-            neww = int(np.round(neww / float(self.stride)) * self.stride)
-            newh = int(np.round(newh / float(self.stride)) * self.stride)
-            assert neww % self.stride == 0
-            assert newh % self.stride == 0
-        return transform.ResizeTransform(h, w, newh, neww, self.interp)
-
-
-def box_to_point8(boxes):
-    """
-    Args:
-        boxes: nx4
-
-    Returns:
-        (nx4)x2
-    """
-    b = boxes[:, [0, 1, 2, 3, 0, 3, 2, 1]]
-    b = b.reshape((-1, 2))
-    return b
-
-
-def point8_to_box(points):
-    """
-    Args:
-        points: (nx4)x2
-    Returns:
-        nx4 boxes (x1y1x2y2)
-    """
-    p = points.reshape((-1, 4, 2))
-    minxy = p.min(axis=1)   # nx2
-    maxxy = p.max(axis=1)   # nx2
-    return np.concatenate((minxy, maxxy), axis=1)
-
-
-def segmentation_to_mask(polys, height, width):
-    """
-    Convert polygons to binary masks.
-
-    Args:
-        polys: a list of nx2 float array
-
-    Returns:
-        a binary matrix of (height, width)
-    """
-    polys = [p.flatten().tolist() for p in polys]
-    rles = cocomask.frPyObjects(polys, height, width)
-    rle = cocomask.merge(rles)
-    return cocomask.decode(rle)
-
-
-def clip_boxes(boxes, shape):
-    """
-    Args:
-        boxes: (...)x4, float
-        shape: h, w
-    """
-    orig_shape = boxes.shape
-    boxes = boxes.reshape([-1, 4])
-    h, w = shape
-    boxes[:, [0, 1]] = np.maximum(boxes[:, [0, 1]], 0)
-    boxes[:, 2] = np.minimum(boxes[:, 2], w)
-    boxes[:, 3] = np.minimum(boxes[:, 3], h)
-    return boxes.reshape(orig_shape)
-
-
-def filter_boxes_inside_shape(boxes, shape):
-    """
-    Args:
-        boxes: (nx4), float
-        shape: (h, w)
-
-    Returns:
-        indices: (k, )
-        selection: (kx4)
-    """
-    assert boxes.ndim == 2, boxes.shape
-    assert len(shape) == 2, shape
-    h, w = shape
-    indices = np.where(
-        (boxes[:, 0] >= 0) &
-        (boxes[:, 1] >= 0) &
-        (boxes[:, 2] <= w) &
-        (boxes[:, 3] <= h))[0]
-    return indices, boxes[indices, :]
-
+# class CustomResize(transform.TransformAugmentorBase):
+#     """
+#     Try resizing the shortest edge to a certain number
+#     while avoiding the longest edge to exceed max_size.
+#     """
+#
+#     def __init__(self, size, max_size, stride=32, interp=cv2.INTER_LINEAR):
+#         """
+#         Args:
+#             size (int): the size to resize the shortest edge to.
+#             max_size (int): maximum allowed longest edge.
+#         """
+#         if not isinstance(size, (list, tuple)):
+#             size = [size]
+#         self._init(locals())
+#
+#     def _get_augment_params(self, img):
+#         h, w = img.shape[:2]
+#         if len(self.size) > 1:
+#             sidx = np.random.randint(0, len(self.size))
+#         else:
+#             sidx = 0
+#         size = self.size[sidx]
+#
+#         scale = size * 1.0 / min(h, w)
+#         if h < w:
+#             newh, neww = size, scale * w
+#         else:
+#             newh, neww = scale * h, size
+#         if max(newh, neww) > self.max_size:
+#             scale = self.max_size * 1.0 / max(newh, neww)
+#             newh = newh * scale
+#             neww = neww * scale
+#         neww = int(neww + 0.5)
+#         newh = int(newh + 0.5)
+#         if self.stride > 1:
+#             neww = int(np.round(neww / float(self.stride)) * self.stride)
+#             newh = int(np.round(newh / float(self.stride)) * self.stride)
+#             assert neww % self.stride == 0
+#             assert newh % self.stride == 0
+#         return transform.ResizeTransform(h, w, newh, neww, self.interp)
+#
+#
+# def box_to_point8(boxes):
+#     """
+#     Args:
+#         boxes: nx4
+#
+#     Returns:
+#         (nx4)x2
+#     """
+#     b = boxes[:, [0, 1, 2, 3, 0, 3, 2, 1]]
+#     b = b.reshape((-1, 2))
+#     return b
+#
+#
+# def point8_to_box(points):
+#     """
+#     Args:
+#         points: (nx4)x2
+#     Returns:
+#         nx4 boxes (x1y1x2y2)
+#     """
+#     p = points.reshape((-1, 4, 2))
+#     minxy = p.min(axis=1)   # nx2
+#     maxxy = p.max(axis=1)   # nx2
+#     return np.concatenate((minxy, maxxy), axis=1)
+#
+#
+# def segmentation_to_mask(polys, height, width):
+#     """
+#     Convert polygons to binary masks.
+#
+#     Args:
+#         polys: a list of nx2 float array
+#
+#     Returns:
+#         a binary matrix of (height, width)
+#     """
+#     polys = [p.flatten().tolist() for p in polys]
+#     rles = cocomask.frPyObjects(polys, height, width)
+#     rle = cocomask.merge(rles)
+#     return cocomask.decode(rle)
+#
+#
+# def clip_boxes(boxes, shape):
+#     """
+#     Args:
+#         boxes: (...)x4, float
+#         shape: h, w
+#     """
+#     orig_shape = boxes.shape
+#     boxes = boxes.reshape([-1, 4])
+#     h, w = shape
+#     boxes[:, [0, 1]] = np.maximum(boxes[:, [0, 1]], 0)
+#     boxes[:, 2] = np.minimum(boxes[:, 2], w)
+#     boxes[:, 3] = np.minimum(boxes[:, 3], h)
+#     return boxes.reshape(orig_shape)
+#
+#
+# def filter_boxes_inside_shape(boxes, shape):
+#     """
+#     Args:
+#         boxes: (nx4), float
+#         shape: (h, w)
+#
+#     Returns:
+#         indices: (k, )
+#         selection: (kx4)
+#     """
+#     assert boxes.ndim == 2, boxes.shape
+#     assert len(shape) == 2, shape
+#     h, w = shape
+#     indices = np.where(
+#         (boxes[:, 0] >= 0) &
+#         (boxes[:, 1] >= 0) &
+#         (boxes[:, 2] <= w) &
+#         (boxes[:, 3] <= h))[0]
+#     return indices, boxes[indices, :]
+#

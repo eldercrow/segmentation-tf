@@ -6,6 +6,7 @@ import numpy as np
 import copy
 import itertools
 
+from scipy.io import loadmat
 from copy import deepcopy
 
 from tensorpack.utils.argtools import memoized, log_once
@@ -18,10 +19,10 @@ from tensorpack.utils import logger
 
 from dataset.dataset_utils import load_many_from_db
 from common import (
-    SSDCropRandomShape, SSDResize, SSDColorJitter, DataFromListOfDict)
+    SSDCropRandomShape, SSDResize, SSDColorJitter, CropPadTransform, DataFromListOfDict)
 from config import config as cfg
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 
 class MalformedData(BaseException):
@@ -66,32 +67,42 @@ def get_train_dataflow():
 
     mean_bgr = np.array(cfg.PREPROC.PIXEL_MEAN[::-1])
 
+    if cfg.DATA.NAME == 'cityscapes':
+        aspect_exp = 1.1
+    elif cfg.DATA.NAME == 'cocostuff':
+        aspect_exp = 1.1 #2.0
+    else:
+        logger.warn('Dataset name not known.')
+        assert False
+
     aug = imgaug.AugmentorList([ \
-            SSDCropRandomShape(mean_rgbgr=mean_bgr),
+            SSDCropRandomShape(cfg.PREPROC.INPUT_SHAPE_TRAIN, aspect_exp=aspect_exp, mean_rgbgr=mean_bgr),
             SSDResize(cfg.PREPROC.INPUT_SHAPE_TRAIN),
             imgaug.Flip(horiz=True),
             SSDColorJitter(mean_rgbgr=mean_bgr)
             ])
     aug_label = imgaug.AugmentorList([ \
-            SSDCropRandomShape(mean_rgbgr=[255,]),
+            SSDCropRandomShape(cfg.PREPROC.INPUT_SHAPE_TRAIN, aspect_exp=aspect_exp, mean_rgbgr=[255,]),
             SSDResize(cfg.PREPROC.INPUT_SHAPE_TRAIN, interp=cv2.INTER_NEAREST),
             imgaug.Flip(horiz=True)
             ])
-
-    # idx_aug_flip = 3
 
     def preprocess(img):
         fn_img, fn_label = img['fn_img'], img['fn_label']
         # load head (and landmark) data as well
         im = cv2.imread(fn_img, cv2.IMREAD_COLOR)
-        label = cv2.imread(fn_label, cv2.IMREAD_GRAYSCALE)
+        if fn_label.endswith('.mat'): # cocostuff
+            label = loadmat(fn_label)['S'].astype(int)
+            label = (label - 1).astype(np.uint8) # -1 becomes 255
+        else:
+            label = cv2.imread(fn_label, cv2.IMREAD_GRAYSCALE)
         label = np.expand_dims(label, 2)
         assert (im is not None) and (label is not None), fn_img
         im = im.astype('float32')
         # label = label.astype('int32')
         # augmentation
         im, params = aug.augment_return_params(im)
-        # TODO: adjust params
+        # TODO: better way to adjust label?
         params_label = deepcopy(params[:-1])
         params_label[0].mean_rgbgr = [255,]
         params_label[1].interp = cv2.INTER_NEAREST
@@ -133,23 +144,19 @@ def get_eval_dataflow(batch_size=0, shard=0, num_shards=1):
         batch_size = cfg.PREPROC.EVAL_BATCH_SIZE
     assert batch_size > 0, 'Batch size should be greater than 0'
 
+    hh, ww = cfg.PREPROC.INPUT_SHAPE_EVAL
+    mean_bgr = np.array(cfg.PREPROC.PIXEL_MEAN[::-1])
+    aug = CropPadTransform(0, 0, ww, hh, mean_bgr)
     def f(fname):
         im = cv2.imread(fname, cv2.IMREAD_COLOR)
         assert im is not None, fname
-        im = cv2.resize(im, (cfg.PREPROC.INPUT_SHAPE_EVAL[1], cfg.PREPROC.INPUT_SHAPE_EVAL[0]))
+        scale = min(ww / float(im.shape[1]), hh / float(im.shape[0]))
+        im = cv2.resize(im, (0, 0), fx=scale, fy=scale)
+        im = aug.apply_image(im)
+        im = cv2.resize(im, (ww, hh))
         return im
     ds = MapDataComponent(ds, f, 0)
-    # def f(img):
-    #     fn_img, fn_label, idx = img['fn_img'], img['fn_label'], img['id']
-    #     # load head (and landmark) data as well
-    #     im = cv2.imread(fn_img, cv2.IMREAD_COLOR)
-    #     label = cv2.imread(fn_label)
-    #     assert (im is not None) and (label is not None), fn_img
-    #     im = im.astype('float32')
-    #     label = label.astype('int32')
-    #     return [im, label, idx]
-    # ds = MapData(ds, f)
-    ds = BatchData(ds, batch_size, use_list=True)
+    ds = BatchData(ds, batch_size, use_list=False)
     return ds
 
 
