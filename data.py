@@ -12,7 +12,7 @@ from copy import deepcopy
 from tensorpack.utils.argtools import memoized, log_once
 from tensorpack.dataflow import (
     imgaug, TestDataSpeed, BatchData,
-    PrefetchDataZMQ, MultiProcessMapDataZMQ, MultiThreadMapData, MapData,
+    MultiProcessMapDataZMQ, MultiThreadMapData, MapData,
     MapDataComponent, DataFromList)
 from tensorpack.utils import logger
 # import tensorpack.utils.viz as tpviz
@@ -95,18 +95,24 @@ def get_train_dataflow():
             label = loadmat(fn_label)['S'].astype(int)
             label = (label - 1).astype(np.uint8) # -1 becomes 255
         else:
-            label = cv2.imread(fn_label, cv2.IMREAD_GRAYSCALE)
+            label = cv2.imread(fn_label, cv2.IMREAD_GRAYSCALE).astype(np.uint8)
         label = np.expand_dims(label, 2)
         assert (im is not None) and (label is not None), fn_img
         im = im.astype('float32')
         # label = label.astype('int32')
         # augmentation
-        im, params = aug.augment_return_params(im)
+        tfms = aug.get_transform(im)
+        im = tfms.apply_image(im)
+        # im, params = aug.augment_return_params(im)
         # TODO: better way to adjust label?
-        params_label = deepcopy(params[:-1])
-        params_label[0].mean_rgbgr = [255,]
-        params_label[1].interp = cv2.INTER_NEAREST
-        label = aug_label.augment_with_params(label, params_label)
+        tfms_label = deepcopy(tfms.tfms[:-1])
+        tfms_label[0].mean_rgbgr = [255,]
+        tfms_label[1].interp = cv2.INTER_NEAREST
+        tfms_label = imgaug.TransformList(tfms_label)
+        import ipdb
+        ipdb.set_trace()
+        label = tfms_label.apply_image(label)
+        # label = aug_label.augment_with_params(label, params_label)
         label = label.astype('int32')
 
         ret = [im, label]
@@ -116,8 +122,10 @@ def get_train_dataflow():
         ds = MultiThreadMapData(ds, 5, preprocess)
         # MPI does not like fork()
     else:
-        # ds = MapData(ds, preprocess) # for debugging
-        ds = MultiProcessMapDataZMQ(ds, cfg.PREPROC.NUM_WORKERS, preprocess)
+        if cfg.PREPROC.NUM_WORKERS == 1:
+            ds = MapData(ds, preprocess) # for debugging
+        else:
+            ds = MultiProcessMapDataZMQ(ds, cfg.PREPROC.NUM_WORKERS, preprocess)
     ds = BatchData(ds, cfg.PREPROC.BATCH_SIZE)
     return ds
 

@@ -59,7 +59,7 @@ class ICNetModel(ModelDesc):
         # preprocessing
         images = image_preprocess(images, bgr=True)
         # get segmentation output
-        feats = icnet_features(images, is_training, num_classes=cfg.DATA.NUM_CLASS)
+        feats = icnet_features(images, is_training, cfg.APPLY_PRUNING, num_classes=cfg.DATA.NUM_CLASS)
 
         # loss
         if is_training:

@@ -59,13 +59,13 @@ from tensorpack import logger
 
 
 def save_to_cache(dataset, name):
-    fn_cache = os.path.join(cfg.DATA.CACHEDIR, name + '.pkl')
+    fn_cache = os.path.expanduser(os.path.join(cfg.DATA.CACHEDIR, name + '.pkl'))
     with open(fn_cache, 'wb') as fh:
         pickle.dump({'dataset': dataset}, fh)
 
 
 def load_from_cache(name, ctime=0):
-    fn_cache = os.path.join(cfg.DATA.CACHEDIR, name + '.pkl')
+    fn_cache = os.path.expanduser(os.path.join(cfg.DATA.CACHEDIR, name + '.pkl'))
     if ctime > os.path.getmtime(fn_cache):
         logger.warn('cache file is older than the dataset file')
         # raise IOError('cache file is older than the dataset file')

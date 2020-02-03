@@ -59,7 +59,7 @@ _C.FOR_FLOPS = False
 # dataset -----------------------
 _C.DATA.NAME = 'cityscapes' # oneof 'voc', 'coco', 'mapillary', 'dss', 'pvtdb'
 _C.DATA.NUM_CATEGORY = 19    # 80 categories
-_C.DATA.CACHEDIR = './data/cache/tpack_seg'
+_C.DATA.CACHEDIR = '~/dataset/cache/tpack_seg'
 # _C.DATA.TRAIN = ['coco_train2017',]   # i.e., trainval35k
 # _C.DATA.VAL = 'coco_val2017'   # For now, only support evaluation on single dataset
 _C.DATA.BASEDIR = ''

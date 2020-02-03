@@ -2,6 +2,8 @@ import numpy as np
 import tensorflow as tf
 import os
 from tensorpack.tfutils.sessinit import get_model_loader
+from tensorpack.models import MaxPooling, AvgPooling, BatchNorm, BNReLU
+from pruning.masked_conv2d import MaskedConv2D as Conv2D
 
 DEFAULT_PADDING = 'VALID'
 DEFAULT_DATAFORMAT = 'NHWC'
@@ -37,7 +39,7 @@ def layer(op):
 
 
 class Network(object):
-    def __init__(self, inputs, is_training, filter_scale=1.0, trainable=True):
+    def __init__(self, inputs, is_training, filter_scale=1.0, trainable=True, prune_mask=False):
         # The input nodes for this network
         self.inputs = inputs
         # The current list of terminal nodes
@@ -55,6 +57,8 @@ class Network(object):
 
         # If true, the resulting variables are set as trainable
         self.is_training = is_training
+
+        self.masking = prune_mask
 
         self.setup()
 
@@ -181,17 +185,26 @@ class Network(object):
         if 'out' not in name and 'cls' not in name:
             c_o *= self.filter_scale
 
-        convolve = lambda i, k: tf.nn.conv2d(i, k, [1, s_h, s_w, 1], padding=padding,data_format=DEFAULT_DATAFORMAT)
-        with tf.variable_scope(name) as scope:
-            kernel = self.make_var('weights', shape=[k_h, k_w, c_i, c_o])
-            output = convolve(input, kernel)
-
-            if biased:
-                biases = self.make_var('biases', [c_o])
-                output = tf.nn.bias_add(output, biases)
-            if relu:
-                output = tf.nn.relu(output, name=scope.name)
-            return output
+        activation = tf.nn.relu if relu else None
+        output = Conv2D(name, input, c_o, \
+                        kernel_size=(k_h, k_w), \
+                        strides=(s_h, s_w), \
+                        padding=padding, \
+                        use_bias=biased, \
+                        activation=activation,
+                        masking=self.masking)
+        return output
+        # convolve = lambda i, k: tf.nn.conv2d(i, k, [1, s_h, s_w, 1], padding=padding,data_format=DEFAULT_DATAFORMAT)
+        # with tf.variable_scope(name) as scope:
+        #     kernel = self.make_var('weights', shape=[k_h, k_w, c_i, c_o])
+        #     output = convolve(input, kernel)
+        #
+        #     if biased:
+        #         biases = self.make_var('biases', [c_o])
+        #         output = tf.nn.bias_add(output, biases)
+        #     if relu:
+        #         output = tf.nn.relu(output, name=scope.name)
+        #     return output
 
     @layer
     def atrous_conv(self,
@@ -211,17 +224,26 @@ class Network(object):
         c_i = input.get_shape()[-1]
         c_o *= self.filter_scale
 
-        convolve = lambda i, k: tf.nn.atrous_conv2d(i, k, dilation, padding=padding)
-        with tf.variable_scope(name) as scope:
-            kernel = self.make_var('weights', shape=[k_h, k_w, c_i, c_o])
-            output = convolve(input, kernel)
-
-            if biased:
-                biases = self.make_var('biases', [c_o])
-                output = tf.nn.bias_add(output, biases)
-            if relu:
-                output = tf.nn.relu(output, name=scope.name)
-            return output
+        activation = tf.nn.relu if relu else None
+        output = Conv2D(name, input, c_o, \
+                        kernel_size=(k_h, k_w), \
+                        padding=padding, \
+                        use_bias=biased, \
+                        dilation_rate=dilation, \
+                        activation=activation,
+                        masking=self.masking)
+        return output
+        # convolve = lambda i, k: tf.nn.atrous_conv2d(i, k, dilation, padding=padding)
+        # with tf.variable_scope(name) as scope:
+        #     kernel = self.make_var('weights', shape=[k_h, k_w, c_i, c_o])
+        #     output = convolve(input, kernel)
+        #
+        #     if biased:
+        #         biases = self.make_var('biases', [c_o])
+        #         output = tf.nn.bias_add(output, biases)
+        #     if relu:
+        #         output = tf.nn.relu(output, name=scope.name)
+        #     return output
 
     @layer
     def relu(self, input, name):
@@ -230,24 +252,32 @@ class Network(object):
     @layer
     def max_pool(self, input, k_h, k_w, s_h, s_w, name, padding=DEFAULT_PADDING):
         self.validate_padding(padding)
-        return tf.nn.max_pool(input,
-                              ksize=[1, k_h, k_w, 1],
-                              strides=[1, s_h, s_w, 1],
-                              padding=padding,
-                              name=name,
-                              data_format=DEFAULT_DATAFORMAT)
+        return MaxPooling(name, input,
+                          pool_size=(k_h, k_w),
+                          strides=(s_h, s_w),
+                          padding=padding)
+        # return tf.nn.max_pool(input,
+        #                       ksize=[1, k_h, k_w, 1],
+        #                       strides=[1, s_h, s_w, 1],
+        #                       padding=padding,
+        #                       name=name,
+        #                       data_format=DEFAULT_DATAFORMAT)
 
     @layer
     def avg_pool(self, input, k_h, k_w, s_h, s_w, name, padding=DEFAULT_PADDING):
         self.validate_padding(padding)
+        return AvgPooling(name, input,
+                          pool_size=(k_h, k_w),
+                          strides=(s_h, s_w),
+                          padding=padding)
 
-        output = tf.nn.avg_pool(input,
-                              ksize=[1, k_h, k_w, 1],
-                              strides=[1, s_h, s_w, 1],
-                              padding=padding,
-                              name=name,
-                              data_format=DEFAULT_DATAFORMAT)
-        return output
+        # output = tf.nn.avg_pool(input,
+        #                       ksize=[1, k_h, k_w, 1],
+        #                       strides=[1, s_h, s_w, 1],
+        #                       padding=padding,
+        #                       name=name,
+        #                       data_format=DEFAULT_DATAFORMAT)
+        # return output
 
     @layer
     def lrn(self, input, radius, alpha, beta, name, bias=1.0):
@@ -299,13 +329,14 @@ class Network(object):
 
     @layer
     def batch_normalization(self, input, name, scale_offset=True, relu=False):
-        output = tf.layers.batch_normalization(
-                    input,
-                    momentum=0.95,
-                    epsilon=1e-5,
-                    training=self.is_training,
-                    name=name
-                )
+        output = BatchNorm(name, input, training=self.is_training)
+        # output = tf.layers.batch_normalization(
+        #             input,
+        #             momentum=0.95,
+        #             epsilon=1e-5,
+        #             training=self.is_training,
+        #             name=name
+        #         )
 
         if relu:
             with tf.name_scope(name):

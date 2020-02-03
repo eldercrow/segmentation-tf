@@ -3,12 +3,12 @@ from icnet.model import ICNet_BN as ICNet
 
 
 @under_name_scope()
-def icnet_features(images, is_training, num_classes=19):
+def icnet_features(images, is_training, prune_mask, num_classes=19):
     '''
     Args:
         hlist: list of three features, [1/8, 1/16, 1/32].
     '''
-    layers = ICNet(images, is_training, num_classes).setup()
+    layers = ICNet(images, is_training, prune_mask, num_classes).setup()
     k_out = ['conv6_cls', 'sub4_out', 'sub24_out']
     out = { k: layers[k] for k in k_out }
     return out

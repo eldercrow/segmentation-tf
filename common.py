@@ -6,7 +6,9 @@ import cv2
 
 from tensorpack.dataflow import RNGDataFlow
 from tensorpack.dataflow.imgaug import transform
-from tensorpack.dataflow.imgaug.base import ImageAugmentor
+from tensorpack.dataflow.imgaug import Transform, ImageAugmentor, PhotometricAugmentor
+from tensorpack.dataflow.imgaug import ResizeTransform
+# from tensorpack.dataflow.imgaug.base import ImageAugmentor
 
 # import pycocotools.mask as cocomask
 
@@ -29,7 +31,7 @@ class DataFromListOfDict(RNGDataFlow):
             yield dp
 
 
-class CropPadTransform(transform.ImageTransform):
+class CropPadTransform(Transform):
     def __init__(self, x0, y0, x1, y1, mean_rgbgr):
         super(CropPadTransform, self).__init__()
         self._init(locals())
@@ -69,7 +71,7 @@ class CropPadTransform(transform.ImageTransform):
         return coords
 
 
-class SSDCropRandomShape(transform.TransformAugmentorBase):
+class SSDCropRandomShape(ImageAugmentor):
     """ Random crop with a random shape"""
 
     def __init__(self,
@@ -89,7 +91,7 @@ class SSDCropRandomShape(transform.TransformAugmentorBase):
         #     max_aspect_ratio = 9999999
         self._init(locals())
 
-    def _get_augment_params(self, img):
+    def get_transform(self, img):
         h, w = img.shape[:2]
         # area = h * w
         scale_e, asp_e = self.rng.uniform(-1.0, 1.0, size=[2])
@@ -119,12 +121,12 @@ class SSDResize(transform.TransformAugmentorBase):
             size = [size, size]
         self._init(locals())
 
-    def _get_augment_params(self, img):
+    def get_transform(self, img):
         h, w = img.shape[:2]
-        return transform.ResizeTransform(h, w, self.size[0], self.size[1], self.interp)
+        return ResizeTransform(h, w, self.size[0], self.size[1], self.interp)
 
 
-class SSDColorJitter(ImageAugmentor):
+class SSDColorJitter(PhotometricAugmentor):
     ''' Random color jittering '''
     def __init__(self, \
                  mean_rgbgr=[127.0, 127.0, 127.0], \
