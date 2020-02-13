@@ -118,7 +118,7 @@ def print_evaluation_scores(fn_all_results):
     if cfg.DATA.NAME in ('cityscapes',):
         return print_cityscapes_evaluation_scores(fn_all_results, 19)
     elif cfg.DATA.NAME in ('cocostuff',):
-        return print_cityscapes_evaluation_scores(fn_all_results, 182)
+        return print_cityscapes_evaluation_scores(fn_all_results, 183)
     else:
         raise ValueError
 
@@ -128,9 +128,13 @@ def print_cityscapes_evaluation_scores(fn_all_results, num_classes):
     # assert cfg.DATA.DSS.BASEDIR and os.path.isdir(cfg.DATA.DSS.BASEDIR)
     db_name = cfg.DATA.NAME
 
+    bg_idx = 255 # for cityscapes
+
     if db_name == 'cocostuff':
+        bg_idx = 0 # for cocostuff
         hh, ww = cfg.PREPROC.INPUT_SHAPE_EVAL
-        aug = CropPadTransform(0, 0, ww, hh, 255)
+        aug = CropPadTransform(0, 0, ww, hh, bg_idx)
+        # aug = CropPadTransform(0, 0, ww, hh, 255)
 
     # load the default testset defined in config
     db = load_many_from_db(db_name, add_gt=True, is_train=False)
@@ -145,7 +149,8 @@ def print_cityscapes_evaluation_scores(fn_all_results, num_classes):
         fn_label = db_all[img_id]['fn_label']
         if fn_label.endswith('.mat'):
             labels = loadmat(fn_label)['S'].astype(int)
-            labels = (labels - 1).astype(np.uint8)
+            labels = labels.astype(np.uint8)
+            # labels = (labels - 1).astype(np.uint8)
             # labels = cv2.resize(labels, (ww, hh), interpolation=cv2.INTER_NEAREST)
             scale = min(ww / float(labels.shape[1]), hh / float(labels.shape[0]))
             labels = cv2.resize(labels, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
@@ -158,7 +163,7 @@ def print_cityscapes_evaluation_scores(fn_all_results, num_classes):
             preds = cv2.resize(preds, (ww, hh), cv2.INTER_NEAREST)
         preds = np.ravel(preds)
         labels = np.ravel(labels)
-        vidx = np.where(labels != 255)[0]
+        vidx = np.where(labels != bg_idx)[0]
         preds = preds[vidx].astype(np.int64)
         labels = labels[vidx].astype(np.int64)
         # add an entry

@@ -10,7 +10,7 @@ from utils.shape_utils import combined_static_and_dynamic_shape
 
 
 @under_name_scope()
-def icnet_losses(cls_logits, labels, num_classes):
+def icnet_losses(cls_logits, labels, num_classes, ignore_label=None):
     '''
     Args:
         cls_logits: dict of {name: (logit tensor, weight)}
@@ -27,6 +27,8 @@ def icnet_losses(cls_logits, labels, num_classes):
         labels = tf.reshape(labels, [-1])
 
         idx = tf.logical_and(tf.greater_equal(labels, 0), tf.less(labels, num_classes))
+        if ignore_label is not None:
+            idx = tf.logical_and(idx, tf.not_equal(labels, ignore_label))
         idx = tf.where(idx)[:, 0]
 
         valid_logits = tf.gather(logits, idx)

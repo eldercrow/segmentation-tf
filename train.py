@@ -38,6 +38,8 @@ from data import get_train_dataflow #, get_eval_dataflow
 from config import finalize_configs, config as cfg
 
 from model.icnet_model import ICNetModel as TrainModel
+from pruning.pruning_callback import PruningCallback
+from utils.before_train_saver import BeforeTrainSaver
 
 
 if __name__ == '__main__':
@@ -45,6 +47,7 @@ if __name__ == '__main__':
     parser.add_argument('--load', help='load a model for evaluation or training. Can overwrite BACKBONE.WEIGHTS')
     parser.add_argument('--resume', action='store_true', help='resume training if set.')
     parser.add_argument('--logdir', help='log directory', default='train_log/aspp')
+    parser.add_argument('--savefirst', action='store_true', help='just save the first step and exit.')
     parser.add_argument('--config', help="A list of KEY=VALUE to overwrite those defined in config.py",
                         nargs='+')
 
@@ -113,6 +116,16 @@ if __name__ == '__main__':
         EstimatedTimeLeft(),
         SessionRunTimeout(60000).set_chief_only(True),   # 1 minute timeout
     ]
+
+    if args.savefirst:
+        callbacks.append(BeforeTrainSaver())
+
+    if cfg.APPLY_PRUNING:
+        cfg.PRUNING.END_PRUNING_STEP = step_size * total_epoch // 2
+        cfg.PRUNING.PRUNING_FREQUENCY = step_size
+        cfg.PRUNING.SPARSITY_FUNCTION_END_STEP = step_size * total_epoch // 2
+        pruning_hparams = cfg.PRUNING.to_dict(to_lower=True)
+        callbacks.append(PruningCallback(pruning_hparams))
 
     if not is_horovod:
         try:

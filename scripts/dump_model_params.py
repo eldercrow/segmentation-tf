@@ -10,13 +10,67 @@ import tensorflow as tf
 
 from tensorpack.tfutils import varmanip
 from tensorpack.tfutils.common import get_op_tensor_name
+from tensorflow.python.platform import gfile
+from tensorflow.python.framework import tensor_util as tensor_util
+
+def _process_icnet_names(name):
+    '''
+    '''
+    k = '{}'.format(name)
+    k = k.replace('batch_normalization/beta', 'bn/beta')
+    k = k.replace('batch_normalization/gamma', 'bn/gamma')
+    k = k.replace('/moving_mean', '/mean/EMA')
+    k = k.replace('/moving_variance', '/variance/EMA')
+    k = k.replace('/weights', '/W')
+    k = k.replace('/biases', '/b')
+    return k
 
 
-'''
-(hyunjoon)
-  For now I am using a kind of dirty hack to get around PSROI layer issue.
-  This code would not work properly except for the pva100 network.
-'''
+def _merge_sparsity_mask(params):
+    '''
+    Merge weights and masks
+    '''
+    r_params = {}
+    for k, v in params.items():
+        rk = k.replace('/mask:0', 'W:0')
+        if rk not in r_params:
+            r_params[rk] = v.copy()
+        else:
+            r_params[rk] *= v
+    return r_params
+
+
+def _measure_sparsity(params):
+    '''
+    '''
+    num_w = 0
+    num_zw = 0
+
+    for k, v in params.items():
+        if k.endswith('W:0'):
+            num_w += v.size
+            num_zw += np.sum(v == 0)
+    sparsity = float(num_zw) / float(num_w)
+    return sparsity
+
+
+def _temp_fix_cocostuff(params):
+    for k, v in params.items():
+        if k in ('conv6_cls/W:0', 'sub24_out/W:0', 'sub4_out/W:0') and v.shape[-1] == 182:
+            nshape = list(v.shape)
+            nshape[-1] = 183
+            nw = np.zeros(nshape, np.float32)
+            nw[:, :, :, 1:] = v
+            params[k] = nw
+        if k in ('conv6_cls/b:0', 'sub24_out/b:0', 'sub4_out/b:0') and v.shape[-1] == 182:
+            nshape = list(v.shape)
+            nshape[-1] = 183
+            nw = -10.0 * np.ones(nshape, np.float32)
+            nw[1:] = v
+            params[k] = nw
+    return params
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Keep only TRAINABLE and MODEL variables in a checkpoint.')
@@ -33,9 +87,20 @@ if __name__ == '__main__':
     # loading...
     if args.input.endswith('.npz'):
         dic = np.load(args.input)
+    elif args.input.endswith('.pb'):
+        with tf.Session() as sess:
+            with gfile.FastGFile(args.input, 'rb') as f:
+                graph_def = tf.GraphDef()
+                graph_def.ParseFromString(f.read())
+                sess.graph.as_default()
+                tf.import_graph_def(graph_def, name='')
+                graph_nodes = [n for n in graph_def.node]
+        dic = {n.name: tensor_util.MakeNdarray(n.attr['value'].tensor) for n in graph_nodes if n.op=='Const'}
     else:
         dic = varmanip.load_chkpt_vars(args.input)
     dic = {get_op_tensor_name(k)[1]: v for k, v in six.iteritems(dic)}
+
+    dic = _merge_sparsity_mask(dic)
 
     dic_to_dump = {}
     postfixes = ['W:0', 'b:0', 'beta:0', 'gamma:0', 'EMA:0',
@@ -47,13 +112,17 @@ if __name__ == '__main__':
                 found = True
                 break
         if found:
+            kk = _process_icnet_names(k)
             # if ('conv6_cls' in k) or ('sub4_out' in k) or ('sub24_out' in k):
             #     continue
             # else:
             #     dic_to_dump[k] = v
-            dic_to_dump[k] = v
+            dic_to_dump[kk] = v
             # print(k)
+    sparsity = _measure_sparsity(dic_to_dump)
+    dic_to_dump = _temp_fix_cocostuff(dic_to_dump)
     varmanip.save_chkpt_vars(dic_to_dump, args.output)
+    print('Net sparsity = {}'.format(sparsity))
     #
     # import ipdb
     # ipdb.set_trace()

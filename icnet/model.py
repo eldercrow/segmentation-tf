@@ -4,9 +4,12 @@ from utils.shape_utils import combined_static_and_dynamic_shape
 from tensorpack.tfutils.scope_utils import auto_reuse_variable_scope
 
 class ICNet_BN(Network):
-    def __init__(self, images, is_training, prune_mask, num_classes):
+    def __init__(self, images, is_training, filter_scale, prune_mask, num_classes):
         self.num_classes = num_classes
-        super().__init__(inputs={'data': images}, is_training=is_training, prune_mask=prune_mask)
+        super().__init__(inputs={'data': images},
+                         is_training=is_training,
+                         filter_scale=filter_scale,
+                         prune_mask=prune_mask)
         # self.output = self.get_output_node()
 
     # def get_output_node(self):

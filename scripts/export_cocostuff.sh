@@ -1,7 +1,7 @@
 #!/bin/bash
 export CUDA_VISIBLE_DEVICES=''
 
-logdir="cityscapes_icnet"
+logdir="cocostuff_ws55"
 
 TF_LIB=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
 
@@ -17,7 +17,9 @@ python predict.py \
     --export-graph $fn_ig \
     --load $checkpoint_path"checkpoint" \
     --config \
-    DATA.NAME='cityscapes' \
+    DATA.NAME='cocostuff' \
+    BACKBONE.FILTER_SCALE=2.0 \
+    INFERENCE.SHIFT_PREDICTION=1
 
 python $TF_LIB/python/tools/freeze_graph.py \
   --input_graph $fn_ig \

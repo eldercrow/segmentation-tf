@@ -22,14 +22,14 @@ class COCOSTUFFSegmentation(object):
         # assert name in DSSMeta.INSTANCE_TO_BASEDIR.keys(), name
         self.name = name
 
-        self._basedir = basedir
+        self._basedir = os.path.expanduser(basedir)
         assert os.path.isdir(self._basedir), self._basedir
         # self._imgdir = os.path.abspath(os.path.join(dbdir, 'leftImg8bit'))
         # assert os.path.isdir(self._imgdir), self._imgdir
         # self._anndir = os.path.abspath(os.path.join(dbdir, 'gtFine'))
         # assert os.path.isdir(self._anndir), self._anndir
 
-        fn_imageset = os.path.join(basedir, 'imageLists', name.split('_')[1] + '.txt')
+        fn_imageset = os.path.join(self._basedir, 'imageLists', name.split('_')[1] + '.txt')
         with open(fn_imageset, 'r') as fh:
             list_all = [l.strip() for l in fh.readlines()]
         self._imageset = [(l + '.jpg', l + '.mat') for l in list_all]

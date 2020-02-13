@@ -66,6 +66,7 @@ def get_train_dataflow():
     ds = DataFromList(imgs, shuffle=True)
 
     mean_bgr = np.array(cfg.PREPROC.PIXEL_MEAN[::-1])
+    mean_label = cfg.PREPROC.LABEL_MEAN
 
     if cfg.DATA.NAME == 'cityscapes':
         aspect_exp = 1.1
@@ -82,7 +83,7 @@ def get_train_dataflow():
             SSDColorJitter(mean_rgbgr=mean_bgr)
             ])
     aug_label = imgaug.AugmentorList([ \
-            SSDCropRandomShape(cfg.PREPROC.INPUT_SHAPE_TRAIN, aspect_exp=aspect_exp, mean_rgbgr=[255,]),
+            SSDCropRandomShape(cfg.PREPROC.INPUT_SHAPE_TRAIN, aspect_exp=aspect_exp, mean_rgbgr=[mean_label,]),
             SSDResize(cfg.PREPROC.INPUT_SHAPE_TRAIN, interp=cv2.INTER_NEAREST),
             imgaug.Flip(horiz=True)
             ])
@@ -93,7 +94,8 @@ def get_train_dataflow():
         im = cv2.imread(fn_img, cv2.IMREAD_COLOR)
         if fn_label.endswith('.mat'): # cocostuff
             label = loadmat(fn_label)['S'].astype(int)
-            label = (label - 1).astype(np.uint8) # -1 becomes 255
+            label = label.astype(np.uint8)
+            # label = (label - 1).astype(np.uint8) # -1 becomes 255
         else:
             label = cv2.imread(fn_label, cv2.IMREAD_GRAYSCALE).astype(np.uint8)
         label = np.expand_dims(label, 2)
@@ -107,10 +109,8 @@ def get_train_dataflow():
         # TODO: better way to adjust label?
         tfms_label = deepcopy(tfms.tfms[:-1])
         tfms_label[0].mean_rgbgr = [255,]
-        tfms_label[1].interp = cv2.INTER_NEAREST
+        tfms_label[1]._transform.interp = cv2.INTER_NEAREST
         tfms_label = imgaug.TransformList(tfms_label)
-        import ipdb
-        ipdb.set_trace()
         label = tfms_label.apply_image(label)
         # label = aug_label.augment_with_params(label, params_label)
         label = label.astype('int32')

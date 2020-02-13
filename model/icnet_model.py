@@ -10,12 +10,14 @@ from tensorpack import *
 from tensorpack.tfutils.summary import add_moving_summary
 
 from tensorpack.tfutils import optimizer
+from tensorpack.tfutils.gradproc import GlobalNormClip
 from backbone.basemodel import image_preprocess
 from backbone.ssdnet import ssdnet_backbone, ssdnet_argscope
 # from backbone.ssdnetv2 import ssdnet_backbone, ssdnet_argscope
 from icnet.losses import icnet_losses
 from icnet.icnet import icnet_features
 from icnet.inference import icnet_inference
+from utils.filter_nan_grad import FilterNaNGrad
 
 from config import config as cfg
 
@@ -31,6 +33,7 @@ class ICNetModel(ModelDesc):
         lr = tf.get_variable('learning_rate', initializer=0.005, trainable=False)
         tf.summary.scalar('learning_rate-summary', lr)
         opt = tf.train.MomentumOptimizer(lr, 0.9)
+        opt = optimizer.apply_grad_processors(opt, [FilterNaNGrad(), GlobalNormClip(10)])
         # opt = tf.train.RMSPropOptimizer(lr, epsilon=0.1)
         return opt
 
@@ -59,13 +62,17 @@ class ICNetModel(ModelDesc):
         # preprocessing
         images = image_preprocess(images, bgr=True)
         # get segmentation output
-        feats = icnet_features(images, is_training, cfg.APPLY_PRUNING, num_classes=cfg.DATA.NUM_CLASS)
+        feats = icnet_features(images,
+                               is_training,
+                               cfg.BACKBONE.FILTER_SCALE,
+                               cfg.APPLY_PRUNING,
+                               num_classes=cfg.DATA.NUM_CLASS)
 
         # loss
         if is_training:
             loss_weights = {'conv6_cls': 1.0, 'sub4_out': 0.16, 'sub24_out': 0.4}
             logits = {k: (v, loss_weights[k]) for k, v in feats.items()}
-            cls_loss = icnet_losses(logits, gt_labels, cfg.DATA.NUM_CLASS)
+            cls_loss = icnet_losses(logits, gt_labels, cfg.DATA.NUM_CLASS, cfg.DATA.IGNORE_LABEL)
             # wd_pattern = '.*(?:W|gamma)'
             wd_pattern = '.*(?:W|weights|kernel)'
             wd_cost = regularize_cost(wd_pattern, \
