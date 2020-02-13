@@ -1,11 +1,11 @@
 #/bin/bash
-export CUDA_VISIBLE_DEVICES='0,1'
+export CUDA_VISIBLE_DEVICES='0,1,2,3,4,5'
 
 ./train.py \
     --logdir './train_log/cocostuff_ws30' \
     --config \
     PREPROC.BATCH_SIZE=12 \
-    PREPROC.NUM_WORKERS=6 \
+    PREPROC.NUM_WORKERS=18 \
     DATA.NAME='cocostuff' \
     DATA.COCOSTUFF.BASEDIR='~/dataset/cocostuff' \
     TRAIN.NUM_EPOCH_PARTITIONS=1 \
