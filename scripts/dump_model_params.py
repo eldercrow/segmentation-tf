@@ -13,6 +13,7 @@ from tensorpack.tfutils.common import get_op_tensor_name
 from tensorflow.python.platform import gfile
 from tensorflow.python.framework import tensor_util as tensor_util
 
+
 def _process_icnet_names(name):
     '''
     '''
@@ -54,6 +55,13 @@ def _measure_sparsity(params):
     return sparsity
 
 
+def  _remove_cls(params):
+    names = ['conv6_cls/W:0', 'sub24_out/W:0', 'sub4_out/W:0']
+    names += ['conv6_cls/b:0', 'sub24_out/b:0', 'sub4_out/b:0']
+    r_params = {k: v for k, v in params.items() if k not in names}
+    return r_params
+
+
 def _temp_fix_cocostuff(params):
     for k, v in params.items():
         if k in ('conv6_cls/W:0', 'sub24_out/W:0', 'sub4_out/W:0') and v.shape[-1] == 182:
@@ -78,6 +86,7 @@ if __name__ == '__main__':
     # parser.add_argument('--meta', help='metagraph file', required=True)
     parser.add_argument(dest='input', help='input model file, has to be a TF checkpoint')
     parser.add_argument(dest='output', help='output model file, can be npz or TF checkpoint')
+    parser.add_argument('--remove-cls', default=False, required=False, help='remove classification layers')
     args = parser.parse_args()
 
     # this script does not need GPU
@@ -121,7 +130,11 @@ if __name__ == '__main__':
             dic_to_dump[kk] = v
             # print(k)
     sparsity = _measure_sparsity(dic_to_dump)
-    dic_to_dump = _temp_fix_cocostuff(dic_to_dump)
+
+    if args.remove_cls:
+        dic_to_dump = _remove_cls(dic_to_dump)
+
+    # dic_to_dump = _temp_fix_cocostuff(dic_to_dump)
     varmanip.save_chkpt_vars(dic_to_dump, args.output)
     print('Net sparsity = {}'.format(sparsity))
     #
