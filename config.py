@@ -169,7 +169,7 @@ def finalize_configs(is_training):
         else:
             assert 'OMPI_COMM_WORLD_SIZE' not in os.environ
             ngpu = get_num_gpu()
-        assert ngpu % 8 == 0 or 8 % ngpu == 0, ngpu
+        # assert ngpu % 8 == 0 or 8 % ngpu == 0, ngpu
         if _C.TRAIN.NUM_GPUS is None:
             _C.TRAIN.NUM_GPUS = ngpu
         else:
