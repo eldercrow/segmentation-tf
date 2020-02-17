@@ -57,6 +57,7 @@ def _measure_sparsity(params):
 def _temp_fix_cocostuff(params):
     for k, v in params.items():
         if k in ('conv6_cls/W:0', 'sub24_out/W:0', 'sub4_out/W:0') and v.shape[-1] == 182:
+            assert False
             nshape = list(v.shape)
             nshape[-1] = 183
             nw = np.zeros(nshape, np.float32)
