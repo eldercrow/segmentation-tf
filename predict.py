@@ -86,9 +86,12 @@ if __name__ == '__main__':
         pred_config = PredictConfig(model=MODEL,
                                     input_names=MODEL.get_inference_tensor_names()[0],
                                     output_names=MODEL.get_inference_tensor_names()[1])
-        pred_config.inputs_desc[0] = InputDesc(type=tf.float32, shape=in_shape, name='data')
+        pred_config.input_signature[0] = tf.TensorSpec(dtype=tf.float32, shape=in_shape, name='data')
         inputs = PlaceholderInput()
-        inputs.setup(pred_config.inputs_desc)
+        inputs.setup(pred_config.input_signature)
+        # pred_config.inputs_desc[0] = InputDesc(type=tf.float32, shape=in_shape, name='data')
+        # inputs = PlaceholderInput()
+        # inputs.setup(pred_config.inputs_desc)
         with PredictTowerContext(''):
             MODEL.build_graph(*inputs.get_input_tensors())
         model_utils.describe_trainable_vars()

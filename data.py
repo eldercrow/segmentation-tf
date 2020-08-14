@@ -68,7 +68,7 @@ def get_train_dataflow():
     mean_bgr = np.array(cfg.PREPROC.PIXEL_MEAN[::-1])
     mean_label = cfg.PREPROC.LABEL_MEAN
 
-    if cfg.DATA.NAME == 'cityscapes':
+    if cfg.DATA.NAME in ('cityscapes', 'camvid'):
         aspect_exp = 1.1
     elif cfg.DATA.NAME == 'cocostuff':
         aspect_exp = 1.1 #2.0

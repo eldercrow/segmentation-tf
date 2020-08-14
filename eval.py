@@ -61,7 +61,7 @@ def pred_batch(img_batch, model_func):
 def pred_dataflow(df, model_func, tqdm_bar=None):
     '''
     '''
-    if cfg.DATA.NAME in ('cityscapes', 'cocostuff'):
+    if cfg.DATA.NAME in ('cityscapes', 'cocostuff', 'camvid'):
         return pred_cityscapes(df, model_func, tqdm_bar)
     # elif cfg.DATA.NAME in ('pvtdb', 'dss', 'voc'):
     #     return eval_dss(df, detect_func)
@@ -119,6 +119,8 @@ def print_evaluation_scores(fn_all_results):
         return print_cityscapes_evaluation_scores(fn_all_results, 19)
     elif cfg.DATA.NAME in ('cocostuff',):
         return print_cityscapes_evaluation_scores(fn_all_results, 183)
+    elif cfg.DATA.NAME in ('camvid',):
+        return print_cityscapes_evaluation_scores(fn_all_results, 12)
     else:
         raise ValueError
 

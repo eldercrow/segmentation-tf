@@ -115,6 +115,8 @@ if __name__ == '__main__':
     dic_to_dump = {}
     postfixes = ['W:0', 'b:0', 'beta:0', 'gamma:0', 'EMA:0',
             'weights:0', 'kernels', 'biases:0', 'moving_mean:0', 'moving_variance:0']
+
+    total_params = 0
     for k, v in dic.items():
         found = False
         for p in postfixes:
@@ -128,6 +130,8 @@ if __name__ == '__main__':
             # else:
             #     dic_to_dump[k] = v
             dic_to_dump[kk] = v
+            if 'W:0' in k or 'b:0' in kk:
+                total_params += v.size
             # print(k)
     sparsity = _measure_sparsity(dic_to_dump)
 
@@ -137,6 +141,7 @@ if __name__ == '__main__':
     # dic_to_dump = _temp_fix_cocostuff(dic_to_dump)
     varmanip.save_chkpt_vars(dic_to_dump, args.output)
     print('Net sparsity = {}'.format(sparsity))
+    print('Total MParams = {}'.format(total_params / (2**20)))
     #
     # import ipdb
     # ipdb.set_trace()

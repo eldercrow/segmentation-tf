@@ -11,6 +11,7 @@ import tensorflow as tf
 from tensorpack.utils import logger
 from tensorpack.utils.timer import timed_operation
 from tensorpack.utils.argtools import log_once
+from copy import deepcopy
 
 from config import config as cfg
 
@@ -99,6 +100,14 @@ class CAMVIDSegmentation(object):
                     continue
                 valid_imgs.append(img)
             imgs, valid_imgs = valid_imgs, imgs
+            # try:
+            if cfg.DATA.CAMVID.TRAIN_REPEAT > 1:
+                repeated = []
+                for _ in range(cfg.DATA.CAMVID.TRAIN_REPEAT):
+                    repeated += deepcopy(imgs)
+                imgs = repeated
+            # except:
+            #     pass
             # save_to_cache(imgs, self.name)
             return imgs
 
